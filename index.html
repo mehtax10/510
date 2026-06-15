@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NFI #510 – Order Status Dashboard</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface2: #f8f9fb;
+  --border: rgba(0,0,0,0.08);
+  --border2: rgba(0,0,0,0.15);
+  --text: #1a1a2e;
+  --muted: #6b7280;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --blue: #378ADD;
+  --amber: #BA7517;
+  --green: #3B6D11;
+  --purple: #534AB7;
+  --teal: #0F6E56;
+  --red: #A32D2D;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1b23;
+    --surface2: #22232e;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.14);
+    --text: #e8e8f0;
+    --muted: #8888aa;
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;color:var(--text);background:var(--bg);min-height:100vh}
+
+/* TOP BAR */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:var(--surface);border-bottom:0.5px solid var(--border2)}
+.brand-block .eyebrow{font-size:10px;letter-spacing:2px;color:var(--muted);font-weight:600}
+.brand-block .title{font-size:18px;font-weight:600;display:flex;align-items:center;gap:10px}
+.chip{font-size:10px;padding:3px 9px;border-radius:6px;background:#E6F1FB;color:#185FA5;font-weight:600;letter-spacing:1px}
+@media (prefers-color-scheme: dark){.chip{background:#0C447C;color:#85B7EB}}
+.refresh-row{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
+.refresh-btn{background:none;border:0.5px solid var(--border2);border-radius:var(--radius);padding:6px 12px;cursor:pointer;font-size:12px;color:var(--text);display:flex;align-items:center;gap:6px;transition:background .15s}
+.refresh-btn:hover{background:var(--surface2)}
+.spin{display:inline-block;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.sdot{width:7px;height:7px;border-radius:50%;background:#639922;display:inline-block}
+.sdot.err{background:#E24B4A}
+.sdot.loading{background:#BA7517;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* CALENDAR */
+.cal-section{background:var(--surface);border-bottom:0.5px solid var(--border2);padding:16px 24px}
+.cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.cal-label{font-size:11px;letter-spacing:1.5px;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:6px}
+.clear-btn{font-size:11px;padding:3px 10px;border:0.5px solid var(--border2);border-radius:6px;background:none;color:var(--muted);cursor:pointer;transition:all .15s}
+.clear-btn:hover{color:var(--text);border-color:var(--blue)}
+.cal-nav-row{display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:12px}
+.cal-nav{background:var(--surface2);border:0.5px solid var(--border2);border-radius:var(--radius);color:var(--text);cursor:pointer;width:30px;height:30px;font-size:16px;display:flex;align-items:center;justify-content:center;transition:background .15s}
+.cal-nav:hover{background:var(--bg)}
+.cal-month{font-size:15px;font-weight:600;min-width:160px;text-align:center}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cal-dname{text-align:center;font-size:10px;letter-spacing:1px;color:var(--muted);padding:5px 0;border-bottom:0.5px solid var(--border);margin-bottom:2px;font-weight:600}
+.cal-day{text-align:center;padding:8px 2px;border-radius:var(--radius);cursor:pointer;font-size:12px;color:var(--muted);border:0.5px solid transparent;transition:all .12s;position:relative}
+.cal-day:hover{background:var(--surface2);color:var(--text)}
+.cal-day.has-orders{color:var(--text);font-weight:600}
+.cal-day.has-orders::after{content:'';position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--blue)}
+.cal-day.other-month{opacity:.2;pointer-events:none}
+.cal-day.selected{background:var(--blue);color:#fff;font-weight:600;border-color:var(--blue)}
+.cal-day.selected::after{background:#fff}
+
+/* KPI STRIP */
+.kpi-strip{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border);border-bottom:0.5px solid var(--border2)}
+.kpi{background:var(--surface);padding:16px 8px;text-align:center}
+.kpi-label{font-size:9px;letter-spacing:1.2px;font-weight:700;margin-bottom:8px}
+.kpi-val{font-size:30px;font-weight:700}
+.kpi.inpool .kpi-label{color:var(--muted)} .kpi.inpool .kpi-val{color:var(--text)}
+.kpi.waved .kpi-label{color:var(--blue)} .kpi.waved .kpi-val{color:var(--blue)}
+.kpi.picked .kpi-label{color:var(--amber)} .kpi.picked .kpi-val{color:var(--amber)}
+.kpi.packed .kpi-label{color:var(--green)} .kpi.packed .kpi-val{color:var(--green)}
+.kpi.staged .kpi-label{color:var(--purple)} .kpi.staged .kpi-val{color:var(--purple)}
+.kpi.shipped .kpi-label{color:var(--teal)} .kpi.shipped .kpi-val{color:var(--teal)}
+.kpi.total .kpi-label{color:var(--muted)} .kpi.total .kpi-val{color:var(--text)}
+
+/* TABLE */
+.table-wrap{padding:20px 24px 40px;overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{padding:10px 10px;text-align:center;font-size:10px;letter-spacing:1px;color:var(--muted);font-weight:700;border-bottom:0.5px solid var(--border2);background:var(--surface2);white-space:nowrap}
+tbody tr{border-bottom:0.5px solid var(--border);transition:background .12s}
+tbody tr:hover{background:var(--surface2)}
+tbody td{padding:10px;text-align:center;vertical-align:middle}
+td.left{text-align:left;padding-left:14px}
+.badge{display:inline-block;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:700;letter-spacing:.5px;white-space:nowrap}
+.b-waved{background:#E6F1FB;color:#185FA5}
+.b-picked{background:#FAEEDA;color:#633806}
+.b-packed{background:#EAF3DE;color:#27500A}
+.b-staged{background:#EEEDFE;color:#3C3489}
+.b-shipped{background:#E1F5EE;color:#085041}
+.b-inpool{background:#f1f0ee;color:#5F5E5A}
+@media (prefers-color-scheme:dark){
+  .b-waved{background:#0C447C;color:#85B7EB}
+  .b-picked{background:#412402;color:#FAC775}
+  .b-packed{background:#173404;color:#C0DD97}
+  .b-staged{background:#26215C;color:#AFA9EC}
+  .b-shipped{background:#04342C;color:#5DCAA5}
+  .b-inpool{background:#2C2C2A;color:#B4B2A9}
+}
+.days-pill{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#E24B4A;color:#fff;font-size:12px;font-weight:700}
+.urgent-date{color:var(--red);font-weight:700}
+.empty{text-align:center;padding:48px;color:var(--muted);font-size:13px}
+.empty i{font-size:36px;display:block;margin-bottom:8px}
+
+@media (max-width:900px){
+  .kpi-strip{grid-template-columns:repeat(4,1fr)}
+  .kpi-val{font-size:22px}
+}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="brand-block">
+    <div class="eyebrow">NFI INDUSTRIES</div>
+    <div class="title">#510 Operations <span class="chip">ORDER STATUS</span></div>
+  </div>
+  <div class="refresh-row">
+    <span class="sdot" id="sdot"></span>
+    <span id="status-txt">Connecting…</span>
+    <span id="ts" style="color:var(--muted)"></span>
+    <button class="refresh-btn" onclick="load()">
+      <i class="ti ti-refresh" id="ricon"></i> Refresh
+    </button>
+  </div>
+</div>
+
+<!-- CALENDAR -->
+<div class="cal-section">
+  <div class="cal-header">
+    <span class="cal-label"><i class="ti ti-calendar"></i> FILTER BY DATE</span>
+    <button class="clear-btn" onclick="clearDate()">✕ Clear date</button>
+  </div>
+  <div class="cal-nav-row">
+    <button class="cal-nav" onclick="prevM()">‹</button>
+    <div class="cal-month" id="cal-title"></div>
+    <button class="cal-nav" onclick="nextM()">›</button>
+  </div>
+  <div class="cal-grid" id="cal"></div>
+</div>
+
+<!-- KPIs -->
+<div class="kpi-strip">
+  <div class="kpi inpool"><div class="kpi-label">IN POOL</div><div class="kpi-val" id="k-inpool">0</div></div>
+  <div class="kpi waved"><div class="kpi-label">WAVED</div><div class="kpi-val" id="k-waved">0</div></div>
+  <div class="kpi picked"><div class="kpi-label">PICKED</div><div class="kpi-val" id="k-picked">0</div></div>
+  <div class="kpi packed"><div class="kpi-label">PACKED</div><div class="kpi-val" id="k-packed">0</div></div>
+  <div class="kpi staged"><div class="kpi-label">STAGED</div><div class="kpi-val" id="k-staged">0</div></div>
+  <div class="kpi shipped"><div class="kpi-label">SHIPPED</div><div class="kpi-val" id="k-shipped">0</div></div>
+  <div class="kpi total"><div class="kpi-label">TOTAL ORDERS</div><div class="kpi-val" id="k-total">0</div></div>
+</div>
+
+<!-- TABLE -->
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>ORDER #</th><th>CLIENT</th><th>TYPE</th>
+        <th>UNITS</th><th>PALLETS</th><th>STATUS</th>
+        <th style="text-align:left;padding-left:14px">DETAIL</th>
+        <th>MABD DATE</th><th>DAYS TO MABD</th><th>ORDER DATE</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div class="empty" id="empty" style="display:none">
+    <i class="ti ti-package"></i>
+    No orders found for the selected date.
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════
+// PASTE YOUR GOOGLE SHEETS CSV URL HERE
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTi1J3-Js4XiSADGbV5xKHxPkfRViQKC2h6KvcXr_NlVRGeHBx67bA9bQN5ZKFE41diNpsWrNm3XrgZ/pub?output=csv";
+// ════════════════════════════════════════════
+
+const DEMO = [
+  {order:"C1-1001",client:"Client 1",type:"Units",units:5200,pallets:"–",status:"WAVED",detail:"Waved today",mabd:"5/21/2024",daysToMabd:1,orderDate:"5/20/2024 09:15 AM"},
+  {order:"C2-1001",client:"Client 2",type:"Units",units:3800,pallets:"–",status:"PICKED",detail:"Picked – in progress",mabd:"5/21/2024",daysToMabd:1,orderDate:"5/20/2024 08:40 AM"},
+  {order:"C2-1002",client:"Client 2",type:"Units",units:2100,pallets:"–",status:"JUST CAME / IN POOL",detail:"In pool – waiting for waving",mabd:"5/22/2024",daysToMabd:2,orderDate:"5/20/2024 10:05 AM"},
+  {order:"C3-1001",client:"Client 3",type:"Pallets",units:"–",pallets:40,status:"IN POOL / WAITING FOR PICK",detail:"Waiting for pick",mabd:"5/21/2024",daysToMabd:1,orderDate:"5/20/2024 07:50 AM"},
+  {order:"C4-1001",client:"Client 4",type:"Units",units:4500,pallets:"–",status:"WAVED",detail:"Waved today",mabd:"5/22/2024",daysToMabd:2,orderDate:"5/20/2024 08:10 AM"},
+  {order:"C4-1002",client:"Client 4",type:"Units",units:6200,pallets:"–",status:"PICKED",detail:"Picked – in progress",mabd:"5/21/2024",daysToMabd:1,orderDate:"5/20/2024 08:25 AM"},
+  {order:"C4-1003",client:"Client 4",type:"Units",units:7100,pallets:"–",status:"PACKED",detail:"Packed – ready to stage",mabd:"5/21/2024",daysToMabd:1,orderDate:"5/20/2024 09:05 AM"},
+  {order:"C4-1004",client:"Client 4",type:"Units",units:7100,pallets:"–",status:"STAGED",detail:"Staged at dock door 5",mabd:"5/21/2024",daysToMabd:1,orderDate:"5/20/2024 10:00 AM"},
+  {order:"C5-1001",client:"Client 5",type:"Pallets",units:"–",pallets:22,status:"SHIPPED",detail:"Shipped today",mabd:"5/20/2024",daysToMabd:0,orderDate:"5/19/2024 11:20 AM"},
+];
+
+let allRows = [];
+let selDate = null;
+let calY = new Date().getFullYear(), calM = new Date().getMonth();
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+function setStatus(state, msg) {
+  const dot = document.getElementById("sdot");
+  const txt = document.getElementById("status-txt");
+  dot.className = "sdot" + (state==="err" ? " err" : state==="loading" ? " loading" : "");
+  txt.textContent = msg;
+}
+
+async function load() {
+  const icon = document.getElementById("ricon");
+  icon.classList.add("spin");
+  setStatus("loading", "Fetching…");
+  try {
+    const res = await fetch(CSV_URL + "&t=" + Date.now());
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const text = await res.text();
+    const wb = XLSX.read(text, {type:"string"});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(ws, {defval:""});
+    if (!json.length) throw new Error("Sheet appears empty");
+    allRows = json.map(r => ({
+      order:      r["ORDER #"]||r["order"]||"",
+      client:     r["CLIENT"]||r["client"]||"",
+      type:       r["ORDER TYPE"]||r["type"]||"",
+      units:      r["UNITS"]||r["units"]||"–",
+      pallets:    r["PALLETS"]||r["pallets"]||"–",
+      status:    (r["STATUS"]||r["status"]||"").toString().toUpperCase().trim(),
+      detail:     r["STATUS LOCATION / DETAIL"]||r["detail"]||"",
+      mabd:       r["MABD DATE"]||r["mabd"]||"",
+      daysToMabd: parseInt(r["DAYS TO MABD"]??r["daysToMabd"]??0)||0,
+      orderDate:  r["ORDER DATE"]||r["orderDate"]||"",
+    }));
+    const now = new Date();
+    document.getElementById("ts").textContent =
+      now.toLocaleDateString("en-US") + " " +
+      now.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
+    setStatus("ok", "Live · " + allRows.length + " orders");
+    calY = now.getFullYear(); calM = now.getMonth();
+  } catch(e) {
+    if (!allRows.length) allRows = [...DEMO];
+    setStatus("err", "Demo data · " + e.message);
+    calY = 2024; calM = 4;
+  }
+  icon.classList.remove("spin");
+  renderCal();
+  render();
+}
+
+function getOrderDates() {
+  const s = new Set();
+  allRows.forEach(r => {
+    const d = new Date(r.orderDate);
+    if (!isNaN(d)) s.add(`${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`);
+  });
+  return s;
+}
+
+function renderCal() {
+  document.getElementById("cal-title").textContent = MONTHS[calM] + " " + calY;
+  const g = document.getElementById("cal");
+  g.innerHTML = "";
+  const dates = getOrderDates();
+  DAYS.forEach(d => {
+    const el = document.createElement("div");
+    el.className = "cal-dname"; el.textContent = d; g.appendChild(el);
+  });
+  const first = new Date(calY, calM, 1).getDay();
+  const total = new Date(calY, calM+1, 0).getDate();
+  const prev  = new Date(calY, calM, 0).getDate();
+  for (let i = first-1; i >= 0; i--) {
+    const el = document.createElement("div");
+    el.className = "cal-day other-month"; el.textContent = prev - i; g.appendChild(el);
+  }
+  for (let d = 1; d <= total; d++) {
+    const ds = `${calM+1}/${d}/${calY}`;
+    let cls = "cal-day";
+    if (dates.has(ds)) cls += " has-orders";
+    if (selDate === ds) cls += " selected";
+    const el = document.createElement("div");
+    el.className = cls; el.textContent = d;
+    el.onclick = () => { selDate = (selDate === ds ? null : ds); renderCal(); render(); };
+    g.appendChild(el);
+  }
+  const rem = (first + total) <= 35 ? 35-(first+total) : 42-(first+total);
+  for (let d = 1; d <= rem; d++) {
+    const el = document.createElement("div");
+    el.className = "cal-day other-month"; el.textContent = d; g.appendChild(el);
+  }
+}
+
+function prevM() { calM--; if (calM < 0) { calM=11; calY--; } renderCal(); }
+function nextM() { calM++; if (calM > 11) { calM=0; calY++; } renderCal(); }
+function clearDate() { selDate = null; renderCal(); render(); }
+
+function formatDate(val) {
+  if (!val) return "–";
+  const d = new Date(val);
+  if (isNaN(d)) return val;
+  return d.toLocaleDateString("en-US", {month:"short", day:"numeric", year:"numeric"});
+}
+
+function badge(s) {
+  const map = {"WAVED":"b-waved","PICKED":"b-picked","PACKED":"b-packed","STAGED":"b-staged","SHIPPED":"b-shipped"};
+  const key = Object.keys(map).find(k => s.includes(k)) || "";
+  return `<span class="badge ${map[key]||'b-inpool'}">${s}</span>`;
+}
+
+function render() {
+  const rows = allRows.filter(r => {
+    if (!selDate) return true;
+    const d = new Date(r.orderDate);
+    return !isNaN(d) && `${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}` === selDate;
+  });
+  const count = s => rows.filter(r => r.status === s).length;
+  const inpool = rows.filter(r => r.status.includes("IN POOL") || r.status.includes("JUST CAME")).length;
+  document.getElementById("k-inpool").textContent  = inpool;
+  document.getElementById("k-waved").textContent   = count("WAVED");
+  document.getElementById("k-picked").textContent  = count("PICKED");
+  document.getElementById("k-packed").textContent  = count("PACKED");
+  document.getElementById("k-staged").textContent  = count("STAGED");
+  document.getElementById("k-shipped").textContent = count("SHIPPED");
+  document.getElementById("k-total").textContent   = rows.length;
+  const tbody = document.getElementById("tbody");
+  const empty = document.getElementById("empty");
+  tbody.innerHTML = "";
+  if (!rows.length) { empty.style.display = "block"; return; }
+  empty.style.display = "none";
+  rows.forEach(r => {
+    const u = (r.daysToMabd <= 1 && r.daysToMabd >= 0);
+    const mabdFormatted = formatDate(r.mabd);
+    const daysPill = (r.daysToMabd === 1 || r.daysToMabd === 0)
+      ? `<span class="days-pill">${r.daysToMabd}</span>`
+      : `<span>${r.daysToMabd}</span>`;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td style="font-weight:600">${r.order}</td>
+      <td style="font-weight:600">${r.client}</td>
+      <td>${r.type}</td>
+      <td>${r.units}</td>
+      <td>${r.pallets}</td>
+      <td>${badge(r.status)}</td>
+      <td class="left">${r.detail}</td>
+      <td class="${u?'urgent-date':''}">${mabdFormatted}</td>
+      <td>${daysPill}</td>
+      <td style="color:var(--muted)">${r.orderDate}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+load();
+</script>
+</body>
+</html>
