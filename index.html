@@ -49,6 +49,9 @@ body{font-family:'Segoe UI',system-ui,sans-serif;color:var(--text);background:va
 .refresh-row{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
 .refresh-btn{background:none;border:0.5px solid var(--border2);border-radius:var(--radius);padding:6px 12px;cursor:pointer;font-size:12px;color:var(--text);display:flex;align-items:center;gap:6px;transition:background .15s}
 .refresh-btn:hover{background:var(--surface2)}
+.outbound-btn{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:var(--radius);background:linear-gradient(135deg,#0c1e35,#185FA5);color:#85C3F7;font-size:12px;font-weight:700;letter-spacing:.5px;text-decoration:none;border:0.5px solid #378ADD;transition:all .18s}
+.outbound-btn:hover{background:linear-gradient(135deg,#185FA5,#378ADD);color:#fff;box-shadow:0 0 12px rgba(55,138,221,0.35)}
+.outbound-btn i{font-size:14px}
 .spin{display:inline-block;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .sdot{width:7px;height:7px;border-radius:50%;background:#639922;display:inline-block}
@@ -166,6 +169,9 @@ td.left{text-align:left;padding-left:14px}
     <span class="sdot" id="sdot"></span>
     <span id="status-txt">Connecting…</span>
     <span id="ts" style="color:var(--muted)"></span>
+    <a href="https://mehtax10.github.io/nfii/" target="_blank" class="outbound-btn">
+      <i class="ti ti-arrow-up-right"></i> Outbound
+    </a>
     <button class="refresh-btn" onclick="load()">
       <i class="ti ti-refresh" id="ricon"></i> Refresh
     </button>
