@@ -147,9 +147,45 @@ td.left{text-align:left;padding-left:14px}
 .empty{text-align:center;padding:48px;color:var(--muted);font-size:13px}
 .empty i{font-size:36px;display:block;margin-bottom:8px}
 
+/* WARNING ROW — MABD due in 1 day */
+tr.warn-row{background:rgba(226,75,74,0.07)}
+tr.warn-row:hover{background:rgba(226,75,74,0.13)}
+tr.warn-row td.left{border-left:3px solid #E24B4A}
+
+/* PROGRESS BAR PER ORDER */
+.stage-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:110px}
+.stage-track{position:relative;width:100%;height:6px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.stage-fill{position:absolute;left:0;top:0;height:100%;border-radius:4px;transition:width .2s}
+.stage-fill.s-inpool{width:8%;background:#5a6080}
+.stage-fill.s-waved{width:25%;background:linear-gradient(90deg,#185FA5,#378ADD)}
+.stage-fill.s-picked{width:45%;background:linear-gradient(90deg,#633806,#BA7517)}
+.stage-fill.s-packed{width:65%;background:linear-gradient(90deg,#27500A,#639922)}
+.stage-fill.s-staged{width:85%;background:linear-gradient(90deg,#3C3489,#7F77DD)}
+.stage-fill.s-shipped{width:100%;background:linear-gradient(90deg,#085041,#1D9E75)}
+.stage-text{font-size:9px;letter-spacing:.5px;font-weight:700;color:var(--muted)}
+
+/* SEARCH BAR */
+.search-wrap{position:relative;display:flex;align-items:center}
+.search-input{background:var(--surface2);border:0.5px solid var(--border2);border-radius:var(--radius);padding:6px 10px 6px 30px;font-size:12px;color:var(--text);width:200px;transition:width .2s,border-color .2s}
+.search-input:focus{outline:none;border-color:var(--blue);width:240px}
+.search-icon{position:absolute;left:9px;font-size:13px;color:var(--muted);pointer-events:none}
+.search-clear{position:absolute;right:7px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:2px;display:none}
+.search-clear.show{display:block}
+
+/* EXPORT BUTTON */
+.export-btn{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--radius);background:var(--surface2);border:0.5px solid var(--border2);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:background .15s}
+.export-btn:hover{background:var(--bg);border-color:var(--green)}
+.export-btn i{font-size:14px;color:var(--green)}
+
+/* AUTO-REFRESH INDICATOR */
+.auto-refresh{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px}
+.auto-refresh .ti-clock{font-size:12px}
+
 @media (max-width:900px){
   .kpi-strip{grid-template-columns:repeat(4,1fr)}
   .kpi-val{font-size:22px}
+  .search-input{width:130px}
+  .search-input:focus{width:150px}
 }
 </style>
 </head>
@@ -161,6 +197,15 @@ td.left{text-align:left;padding-left:14px}
     <div class="title">#510 Operations <span class="chip">ORDER STATUS</span></div>
   </div>
   <div class="refresh-row">
+    <div class="search-wrap">
+      <i class="ti ti-search search-icon"></i>
+      <input type="text" class="search-input" id="search-box" placeholder="Search order # or client…" oninput="onSearch()"/>
+      <button class="search-clear" id="search-clear-btn" onclick="clearSearch()">✕</button>
+    </div>
+    <button class="export-btn" onclick="exportCSV()">
+      <i class="ti ti-download"></i> Export
+    </button>
+    <span class="auto-refresh"><i class="ti ti-clock"></i> <span id="auto-refresh-txt">60s</span></span>
     <span class="sdot" id="sdot"></span>
     <span id="status-txt">Connecting…</span>
     <span id="ts" style="color:var(--muted)"></span>
@@ -208,6 +253,7 @@ td.left{text-align:left;padding-left:14px}
         <th>ORDER #</th><th>CLIENT</th><th>TYPE</th>
         <th>UNITS</th><th>PALLETS</th><th>STATUS</th>
         <th style="text-align:left;padding-left:14px">DETAIL</th>
+        <th>PIPELINE</th>
         <th>MABD DATE</th><th>DAYS TO MABD</th><th>ORDER DATE</th>
       </tr>
     </thead>
@@ -374,6 +420,74 @@ function badge(s) {
   return `<span class="badge ${map[key]||'b-inpool'}">${s}</span>`;
 }
 
+// Pipeline stage order, used for the per-order progress bar
+const STAGE_ORDER = [
+  {key:"INPOOL",  cls:"s-inpool",  label:"IN POOL"},
+  {key:"WAVED",   cls:"s-waved",   label:"WAVED"},
+  {key:"PICKED",  cls:"s-picked",  label:"PICKED"},
+  {key:"PACKED",  cls:"s-packed",  label:"PACKED"},
+  {key:"STAGED",  cls:"s-staged",  label:"STAGED"},
+  {key:"SHIPPED", cls:"s-shipped", label:"SHIPPED"},
+];
+
+function getStage(status) {
+  if (status.includes("SHIPPED")) return STAGE_ORDER[5];
+  if (status.includes("STAGED"))  return STAGE_ORDER[4];
+  if (status.includes("PACKED"))  return STAGE_ORDER[3];
+  if (status.includes("PICKED"))  return STAGE_ORDER[2];
+  if (status.includes("WAVED"))   return STAGE_ORDER[1];
+  return STAGE_ORDER[0]; // IN POOL / JUST CAME / default
+}
+
+function stageBar(status) {
+  const stage = getStage(status);
+  return `
+    <div class="stage-wrap">
+      <div class="stage-track">
+        <div class="stage-fill ${stage.cls}"></div>
+      </div>
+      <div class="stage-text">${stage.label}</div>
+    </div>
+  `;
+}
+
+// ── Search ──────────────────────────────────────────────────────────────
+let searchTerm = "";
+function onSearch() {
+  const box = document.getElementById("search-box");
+  searchTerm = box.value.trim().toLowerCase();
+  document.getElementById("search-clear-btn").classList.toggle("show", searchTerm.length > 0);
+  render();
+}
+function clearSearch() {
+  document.getElementById("search-box").value = "";
+  searchTerm = "";
+  document.getElementById("search-clear-btn").classList.remove("show");
+  render();
+}
+
+// ── CSV Export ──────────────────────────────────────────────────────────
+function exportCSV() {
+  const headers = ["ORDER #","CLIENT","TYPE","UNITS","PALLETS","STATUS","DETAIL","MABD DATE","DAYS TO MABD","ORDER DATE"];
+  const rows = currentVisibleRows.map(r => [
+    r.order, r.client, r.type, r.units, r.pallets, r.status, r.detail, formatDate(r.mabd), r.daysToMabd, r.orderDate
+  ]);
+  const escape = v => `"${String(v).replace(/"/g,'""')}"`;
+  const csv = [headers, ...rows].map(row => row.map(escape).join(",")).join("\n");
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const stamp = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `nfi_510_orders_${selDate ? selDate.replace(/\//g,'-') : 'active'}_${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+let currentVisibleRows = [];
+
 function render() {
   const dateFiltered = allRows.filter(r => {
     if (!selDate) return true;
@@ -382,9 +496,19 @@ function render() {
   });
 
   // Home (no date selected): hide shipped. Date selected: show all including shipped.
-  const rows = selDate
+  let rows = selDate
     ? dateFiltered
     : dateFiltered.filter(r => !isShipped(r));
+
+  // Apply search filter (order # or client name)
+  if (searchTerm) {
+    rows = rows.filter(r =>
+      (r.order && r.order.toLowerCase().includes(searchTerm)) ||
+      (r.client && r.client.toLowerCase().includes(searchTerm))
+    );
+  }
+
+  currentVisibleRows = rows;
 
   const countFrom = (arr, s) => arr.filter(r => r.status === s).length;
   const inpool = dateFiltered.filter(r => r.status.includes("IN POOL") || r.status.includes("JUST CAME")).length;
@@ -396,7 +520,7 @@ function render() {
   document.getElementById("k-packed").textContent  = countFrom(dateFiltered, "PACKED");
   document.getElementById("k-staged").textContent  = countFrom(dateFiltered, "STAGED");
   document.getElementById("k-shipped").textContent = shippedCount;
-  document.getElementById("k-total").textContent   = rows.length + (selDate ? 0 : shippedCount);
+  document.getElementById("k-total").textContent   = (selDate ? dateFiltered.length : dateFiltered.filter(r=>!isShipped(r)).length + shippedCount);
 
   const kpiShipped = document.getElementById("kpi-shipped");
   const banner = document.getElementById("mode-banner");
@@ -412,7 +536,12 @@ function render() {
     kpiShipped.classList.add("dimmed");
     banner.className = "mode-banner active-mode";
     const hiddenCount = shippedCount;
-    modeText.textContent = `ACTIVE ORDERS — ${hiddenCount} shipped order${hiddenCount!==1?'s':''} hidden. Select a date to view shipped.`;
+    const dueTomorrowCount = dateFiltered.filter(r => !isShipped(r) && r.daysToMabd === 1).length;
+    let txt = `ACTIVE ORDERS — ${hiddenCount} shipped order${hiddenCount!==1?'s':''} hidden. Select a date to view shipped.`;
+    if (dueTomorrowCount > 0) {
+      txt += ` ⚠ ${dueTomorrowCount} order${dueTomorrowCount!==1?'s':''} due in 1 day.`;
+    }
+    modeText.textContent = txt;
   }
 
   const tbody = document.getElementById("tbody");
@@ -422,19 +551,22 @@ function render() {
   empty.style.display = "none";
   rows.forEach(r => {
     const u = (r.daysToMabd <= 1 && r.daysToMabd >= 0);
+    const isWarning = !isShipped(r) && r.daysToMabd === 1;
     const mabdFormatted = formatDate(r.mabd);
     const daysPill = (r.daysToMabd === 1 || r.daysToMabd === 0)
       ? `<span class="days-pill">${r.daysToMabd}</span>`
       : `<span>${r.daysToMabd}</span>`;
     const tr = document.createElement("tr");
+    if (isWarning) tr.classList.add("warn-row");
     tr.innerHTML = `
-      <td style="font-weight:600">${r.order}</td>
+      <td style="font-weight:600">${isWarning ? '⚠ ' : ''}${r.order}</td>
       <td style="font-weight:600">${r.client}</td>
       <td>${r.type}</td>
       <td>${r.units}</td>
       <td>${r.pallets}</td>
       <td>${badge(r.status)}</td>
       <td class="left">${r.detail}</td>
+      <td>${stageBar(r.status)}</td>
       <td class="${u?'urgent-date':''}">${mabdFormatted}</td>
       <td>${daysPill}</td>
       <td style="color:var(--muted)">${r.orderDate}</td>
@@ -442,6 +574,18 @@ function render() {
     tbody.appendChild(tr);
   });
 }
+
+// ── Auto-refresh every 60 seconds ─────────────────────────────────────────
+let autoRefreshSeconds = 60;
+function tickAutoRefresh() {
+  autoRefreshSeconds--;
+  if (autoRefreshSeconds <= 0) {
+    autoRefreshSeconds = 60;
+    load();
+  }
+  document.getElementById("auto-refresh-txt").textContent = autoRefreshSeconds + "s";
+}
+setInterval(tickAutoRefresh, 1000);
 
 load();
 </script>
